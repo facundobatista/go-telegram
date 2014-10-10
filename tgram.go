@@ -20,17 +20,19 @@ TODO:
 */
 
 const raw_prompt = "\x1b[K> \r"
+const prefix = "\x1b[K"
 
 
 type Telegram struct {
     tg_cli_path, tg_pub_path string
-    ch_stdout chan []byte
+    ch_stdout chan string
     stdin *bufio.Writer
+    issued_command string
 }
 
 func (t *Telegram) Init() error {
     // start the command
-    cmd := exec.Command(t.tg_cli_path, "-k", t.tg_pub_path)
+    cmd := exec.Command(t.tg_cli_path, "-C", "-k", t.tg_pub_path)
 
     // handle stdout
     stdout, err := cmd.StdoutPipe()
@@ -38,7 +40,7 @@ func (t *Telegram) Init() error {
         return err
     }
     out := bufio.NewReader(stdout)
-    t.ch_stdout = make(chan []byte)
+    t.ch_stdout = make(chan string)
     go t.readlines(out, t.ch_stdout)
 
     // handle stdin
@@ -59,9 +61,9 @@ func (t *Telegram) Init() error {
     return nil
 }
 
-func (t *Telegram) readlines(src *bufio.Reader, dst chan []byte) {
+func (t *Telegram) readlines(src *bufio.Reader, dst chan string) {
     for 1 == 1 {
-        line, err := src.ReadBytes('\r')
+        line, err := src.ReadString('\r')
         if err != nil && err != io.EOF {
             log.Fatal(err)
         }
@@ -71,6 +73,7 @@ func (t *Telegram) readlines(src *bufio.Reader, dst chan []byte) {
 
 func (t *Telegram) read_response() []string {
     useful := []string{}
+    fmt.Printf("read response after command: %q\n", t.issued_command)
     for 1 == 1 {
         received := <-t.ch_stdout
         fmt.Printf("received: %q\n", received)
@@ -83,10 +86,22 @@ func (t *Telegram) read_response() []string {
                 continue
             }
         }
-        lines := strings.Split(string(received), "\n")
+
+        // remove the control prefix, and a prompt if was needed
+        received = strings.TrimPrefix(received, prefix)
+        received = strings.TrimPrefix(received, "> ")
+
+        // split the string in lines, add those that are not a prompt
+        lines := strings.Split(received, "\n")
         for _, v := range lines {
             if v != "> \r" {
                 useful = append(useful, v)
+
+                // if it matches the issued command it means that so far it
+                // was telegram echoing us
+                if v == t.issued_command {
+                    useful = []string{}
+                }
             }
         }
     }
@@ -95,9 +110,10 @@ func (t *Telegram) read_response() []string {
 }
 
 func (t *Telegram) Execute(order string) []string {
-    // FIXME: this is not working!!
     fmt.Printf("Sending command: %q\n", order)
-    t.stdin.WriteString(order)
+    t.issued_command = order
+    t.stdin.WriteString(order + "\n")
+    t.stdin.Flush()
     resp := t.read_response()
     return resp
 }
@@ -122,7 +138,7 @@ func main() {
         log.Fatal(err)
     }
 
-    resp := telegram.Execute("contact_list\n")
+    resp := telegram.Execute("contact_list")
     fmt.Printf("Resp: %q\n", resp)
 
     telegram.Quit()
