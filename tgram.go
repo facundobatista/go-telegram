@@ -5,9 +5,9 @@ import (
     "log"
     "os"
     "os/exec"
-//    "time"
     "bufio"
     "io"
+    "strings"
 )
 
 /*
@@ -65,31 +65,36 @@ func (t *Telegram) readlines(src *bufio.Reader, dst chan []byte) {
         if err != nil && err != io.EOF {
             log.Fatal(err)
         }
-        fmt.Printf("raw: %q\n", line)
         dst <- line
-        //fmt.Printf("waiting stdout\n")
-        //time.Sleep(500 * time.Millisecond)
     }
 }
 
-func (t *Telegram) read_response() string {
-    /*
-    TODO:
-    - separate received stuff by \n
-    - remove "> \r" in a clean line
-    - put all lines in a list and return that
-    */
+func (t *Telegram) read_response() []string {
+    useful := []string{}
     for 1 == 1 {
         received := <-t.ch_stdout
         fmt.Printf("received: %q\n", received)
         if string(received) == raw_prompt {
-            break
+            // if has something useful already, this is the end of it; otherwise
+            // it's just garbage before getting any result
+            if len(useful) > 0 {
+                break
+            } else {
+                continue
+            }
+        }
+        lines := strings.Split(string(received), "\n")
+        for _, v := range lines {
+            if v != "> \r" {
+                useful = append(useful, v)
+            }
         }
     }
-    return "FIXME"
+    fmt.Printf("useful: %q\n", useful)
+    return useful
 }
 
-func (t *Telegram) Execute(order string) string {
+func (t *Telegram) Execute(order string) []string {
     // FIXME: this is not working!!
     fmt.Printf("Sending command: %q\n", order)
     t.stdin.WriteString(order)
@@ -117,7 +122,7 @@ func main() {
         log.Fatal(err)
     }
 
-    resp := telegram.Execute("contact_list")
+    resp := telegram.Execute("contact_list\n")
     fmt.Printf("Resp: %q\n", resp)
 
     telegram.Quit()
