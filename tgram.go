@@ -58,6 +58,9 @@ func (t *Telegram) Init() error {
 
     // this will consume the initial header with telegram version, etc
     t.read_response()
+
+    // this will populate backend telegram with contacts, needed to send messages
+    t.ListContacts()
     return nil
 }
 
@@ -132,7 +135,12 @@ func (t *Telegram) ListContacts() []string {
 }
 
 func (t *Telegram) SendMessage(dest, message string) {
-    fmt.Printf("TODO!! Sending message to %q: %q\n", dest, message)
+    fmt.Printf("Sending message to %q: %q\n", dest, message)
+    dest = strings.Replace(dest, " ", "_", -1)
+    parts := []string{"msg", dest, message}
+    resp := t.execute(strings.Join(parts, " "))
+    // FIXME: needs to consume better what comes from telegram backend...
+    fmt.Printf("===== send resp: %q\n", resp)
 }
 
 func (t *Telegram) Quit() {
@@ -173,6 +181,7 @@ func main() {
                 log.Fatal(err)
             }
         }
+        text = strings.TrimSpace(text)
         tokens := strings.Split(text, " ")
         fmt.Printf("=== user: %q\n", tokens)
         switch tokens[0] {
