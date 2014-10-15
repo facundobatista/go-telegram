@@ -109,13 +109,30 @@ func (t *Telegram) read_response() []string {
     return useful
 }
 
-func (t *Telegram) Execute(order string) []string {
+func (t *Telegram) execute(order string) []string {
     fmt.Printf("Sending command: %q\n", order)
     t.issued_command = order
     t.stdin.WriteString(order + "\n")
     t.stdin.Flush()
     resp := t.read_response()
     return resp
+}
+
+func (t *Telegram) ListContacts() []string {
+    fmt.Printf("Listing contacts\n")
+    contacts := []string{}
+    resp := t.execute("contact_list")
+    for _, v := range resp {
+        if strings.HasPrefix(v, "User") && strings.HasSuffix(v, "updated photo") {
+            continue
+        }
+        contacts = append(contacts, v)
+    }
+    return contacts
+}
+
+func (t *Telegram) SendMessage(dest, message string) {
+    fmt.Printf("TODO!! Sending message to %q: %q\n", dest, message)
 }
 
 func (t *Telegram) Quit() {
@@ -132,14 +149,51 @@ func main() {
     tg_cli_path := os.Args[1]
     tg_pub_path := os.Args[2]
 
+    // start Telegram backend
+    fmt.Printf("Hello! Starting backend...\n")
     telegram := &Telegram{tg_cli_path: tg_cli_path, tg_pub_path: tg_pub_path}
     err := telegram.Init()
     if err != nil {
         log.Fatal(err)
     }
 
-    resp := telegram.Execute("contact_list")
-    fmt.Printf("Resp: %q\n", resp)
+    // start dialog with user
+    reader := bufio.NewReader(os.Stdin)
+    fmt.Printf("Done! Allowed: quit, send, list-contacts\n")
 
+    // main user interface loop
+    should_quit := false
+    for 1 == 1 {
+        fmt.Printf(">> ")
+        text, err := reader.ReadString('\n')
+        if err != nil {
+            if err == io.EOF {
+                break
+            } else {
+                log.Fatal(err)
+            }
+        }
+        tokens := strings.Split(text, " ")
+        fmt.Printf("=== user: %q\n", tokens)
+        switch tokens[0] {
+            case "quit":
+                should_quit = true
+            case "list-contacts":
+                contacts := telegram.ListContacts()
+                for _, v := range contacts {
+                    fmt.Print(v + "\n")
+                }
+            case "send":
+                dest := tokens[1]
+                msg := strings.Join(tokens[2:], " ")
+                telegram.SendMessage(dest, msg)
+        }
+        if should_quit {
+            break
+        }
+    }
+
+    // clean up and die
+    fmt.Printf("Quitting\n")
     telegram.Quit()
 }
