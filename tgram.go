@@ -1,12 +1,13 @@
 package main
 
 import (
+    "bufio"
     "fmt"
+    "io"
     "log"
     "os"
     "os/exec"
-    "bufio"
-    "io"
+    "regexp"
     "strings"
 )
 
@@ -19,15 +20,18 @@ TODO:
   nasty polling of stdout
 */
 
-const raw_prompt = "\x1b[K> \r"
-const prefix = "\x1b[K"
+const prompt = "> \r"
+const control_prefix = "\x1b[K"
 
+type callback func(string, string)
 
 type Telegram struct {
     tg_cli_path, tg_pub_path string
     ch_stdout chan string
     stdin *bufio.Writer
     issued_command string
+    incoming_callback callback
+    command_mode bool
 }
 
 func (t *Telegram) Init() error {
@@ -40,7 +44,7 @@ func (t *Telegram) Init() error {
         return err
     }
     out := bufio.NewReader(stdout)
-    t.ch_stdout = make(chan string)
+    t.ch_stdout = make(chan string, 3)
     go t.readlines(out, t.ch_stdout)
 
     // handle stdin
@@ -57,20 +61,53 @@ func (t *Telegram) Init() error {
     }
 
     // this will consume the initial header with telegram version, etc
+    t.command_mode = true
     t.read_response()
 
     // this will populate backend telegram with contacts, needed to send messages
     t.ListContacts()
+    t.command_mode = false
     return nil
 }
 
 func (t *Telegram) readlines(src *bufio.Reader, dst chan string) {
+    // the regex to match incoming messages
+    re_incoming := regexp.MustCompile("\\[\\d\\d:\\d\\d\\] (.*) >>> (.*)")
+
     for 1 == 1 {
         line, err := src.ReadString('\r')
         if err != nil && err != io.EOF {
             log.Fatal(err)
         }
-        dst <- line
+        //fmt.Printf("raw: %q\n", line)
+
+        // remove the control prefix, and a prompt if was needed
+        line = strings.TrimPrefix(line, control_prefix)
+
+        // discard the notifications (we may want to execute a callback
+        // with these in a future)
+        if strings.HasPrefix(line, "User ") {
+            fmt.Printf("Discarding notification: %q\n", line)
+            continue
+        }
+
+        // execute a callback with incoming messages (these are not part
+        // of the command responses!)
+        match := re_incoming.FindStringSubmatch(line)
+        if match != nil {
+            t.incoming_callback(match[1], match[2])  // user, message
+            continue
+        }
+
+        if t.command_mode {
+            fmt.Printf("Sending: %q\n", line)
+            dst <- line
+        } else {
+            // it's ok to discard empty prompts
+            if line != prompt {
+                fmt.Printf("WARNING wrongly discarded: %q\n", line)
+            }
+        }
     }
 }
 
@@ -80,7 +117,7 @@ func (t *Telegram) read_response() []string {
     for 1 == 1 {
         received := <-t.ch_stdout
         fmt.Printf("received: %q\n", received)
-        if string(received) == raw_prompt {
+        if received == prompt {
             // if has something useful already, this is the end of it; otherwise
             // it's just garbage before getting any result
             if len(useful) > 0 {
@@ -90,24 +127,25 @@ func (t *Telegram) read_response() []string {
             }
         }
 
-        // remove the control prefix, and a prompt if was needed
-        received = strings.TrimPrefix(received, prefix)
         received = strings.TrimPrefix(received, "> ")
 
         // split the string in lines, add those that are not a prompt
         lines := strings.Split(received, "\n")
         for _, v := range lines {
-            if v != "> \r" {
-                useful = append(useful, v)
+            if v == prompt {
+                continue
+            }
 
-                // if it matches the issued command it means that so far it
-                // was telegram echoing us
-                if v == t.issued_command {
-                    useful = []string{}
-                }
+            useful = append(useful, v)
+
+            // if it matches the issued command it means that so far it
+            // was telegram echoing us
+            if v == t.issued_command {
+                useful = []string{}
             }
         }
     }
+    t.command_mode = false
     fmt.Printf("useful: %q\n", useful)
     return useful
 }
@@ -115,6 +153,7 @@ func (t *Telegram) read_response() []string {
 func (t *Telegram) execute(order string) []string {
     fmt.Printf("Sending command: %q\n", order)
     t.issued_command = order
+    t.command_mode = true
     t.stdin.WriteString(order + "\n")
     t.stdin.Flush()
     resp := t.read_response()
@@ -123,15 +162,7 @@ func (t *Telegram) execute(order string) []string {
 
 func (t *Telegram) ListContacts() []string {
     fmt.Printf("Listing contacts\n")
-    contacts := []string{}
-    resp := t.execute("contact_list")
-    for _, v := range resp {
-        if strings.HasPrefix(v, "User") && strings.HasSuffix(v, "updated photo") {
-            continue
-        }
-        contacts = append(contacts, v)
-    }
-    return contacts
+    return t.execute("contact_list")
 }
 
 func (t *Telegram) SendMessage(dest, message string) {
@@ -139,7 +170,6 @@ func (t *Telegram) SendMessage(dest, message string) {
     dest = strings.Replace(dest, " ", "_", -1)
     parts := []string{"msg", dest, message}
     resp := t.execute(strings.Join(parts, " "))
-    // FIXME: needs to consume better what comes from telegram backend...
     fmt.Printf("===== send resp: %q\n", resp)
 }
 
@@ -147,6 +177,10 @@ func (t *Telegram) Quit() {
     t.stdin.WriteString("quit\n")
 }
 
+
+func show_incoming (origin, message string) {
+    fmt.Printf("<---[%s] %q\n", origin, message)
+}
 
 
 func main() {
@@ -159,7 +193,8 @@ func main() {
 
     // start Telegram backend
     fmt.Printf("Hello! Starting backend...\n")
-    telegram := &Telegram{tg_cli_path: tg_cli_path, tg_pub_path: tg_pub_path}
+    telegram := &Telegram{tg_cli_path: tg_cli_path, tg_pub_path: tg_pub_path,
+                          incoming_callback: show_incoming}
     err := telegram.Init()
     if err != nil {
         log.Fatal(err)
