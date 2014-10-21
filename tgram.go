@@ -1,3 +1,19 @@
+/* 
+Copyright 2014 Facundo Batista
+
+This program is free software: you can redistribute it and/or modify it
+under the terms of the GNU General Public License version 3, as published
+by the Free Software Foundation.
+
+This program is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranties of
+MERCHANTABILITY, SATISFACTORY QUALITY, or FITNESS FOR A PARTICULAR
+PURPOSE.  See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License along
+with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
 package main
 
 import (
@@ -9,19 +25,13 @@ import (
     "os/exec"
     "regexp"
     "strings"
+    "./logging"
 )
-
-/*
-TODO:
-- allow it to register a callback
-- put a flag to know if what it's getting from stdout is a response to a
-  command or something produced by the system, to send to the callback
-- find how to do select on a socket, or something, to avoid that 
-  nasty polling of stdout
-*/
 
 const prompt = "> \r"
 const control_prefix = "\x1b[K"
+
+var logger = logging.New(logging.LevelError)
 
 type callback func(string, string)
 
@@ -79,7 +89,7 @@ func (t *Telegram) readlines(src *bufio.Reader, dst chan string) {
         if err != nil && err != io.EOF {
             log.Fatal(err)
         }
-        //fmt.Printf("raw: %q\n", line)
+        logger.Debug("raw: %q\n", line)
 
         // remove the control prefix, and a prompt if was needed
         line = strings.TrimPrefix(line, control_prefix)
@@ -87,7 +97,7 @@ func (t *Telegram) readlines(src *bufio.Reader, dst chan string) {
         // discard the notifications (we may want to execute a callback
         // with these in a future)
         if strings.HasPrefix(line, "User ") {
-            fmt.Printf("Discarding notification: %q\n", line)
+            logger.Debug("Discarding notification: %q\n", line)
             continue
         }
 
@@ -100,12 +110,12 @@ func (t *Telegram) readlines(src *bufio.Reader, dst chan string) {
         }
 
         if t.command_mode {
-            fmt.Printf("Sending: %q\n", line)
+            logger.debug("Sending: %q\n", line)
             dst <- line
         } else {
             // it's ok to discard empty prompts
             if line != prompt {
-                fmt.Printf("WARNING wrongly discarded: %q\n", line)
+                logger.Error("Wrongly discarded: %q\n", line)
             }
         }
     }
@@ -113,10 +123,10 @@ func (t *Telegram) readlines(src *bufio.Reader, dst chan string) {
 
 func (t *Telegram) read_response() []string {
     useful := []string{}
-    fmt.Printf("read response after command: %q\n", t.issued_command)
+    logger.Info("read response after command: %q\n", t.issued_command)
     for 1 == 1 {
         received := <-t.ch_stdout
-        fmt.Printf("received: %q\n", received)
+        logger.Info("received: %q\n", received)
         if received == prompt {
             // if has something useful already, this is the end of it; otherwise
             // it's just garbage before getting any result
@@ -146,12 +156,12 @@ func (t *Telegram) read_response() []string {
         }
     }
     t.command_mode = false
-    fmt.Printf("useful: %q\n", useful)
+    logger.Info("useful: %q\n", useful)
     return useful
 }
 
 func (t *Telegram) execute(order string) []string {
-    fmt.Printf("Sending command: %q\n", order)
+    logger.Info("Sending command: %q\n", order)
     t.issued_command = order
     t.command_mode = true
     t.stdin.WriteString(order + "\n")
@@ -161,16 +171,16 @@ func (t *Telegram) execute(order string) []string {
 }
 
 func (t *Telegram) ListContacts() []string {
-    fmt.Printf("Listing contacts\n")
+    logger.Info("Listing contacts\n")
     return t.execute("contact_list")
 }
 
 func (t *Telegram) SendMessage(dest, message string) {
-    fmt.Printf("Sending message to %q: %q\n", dest, message)
+    logger.Info("Sending message to %q: %q\n", dest, message)
     dest = strings.Replace(dest, " ", "_", -1)
     parts := []string{"msg", dest, message}
     resp := t.execute(strings.Join(parts, " "))
-    fmt.Printf("===== send resp: %q\n", resp)
+    logger.Debug("Response to send message: %q\n", resp)
 }
 
 func (t *Telegram) Quit() {
@@ -186,7 +196,7 @@ func show_incoming (origin, message string) {
 func main() {
     // check parameters
     if len(os.Args) < 3 {
-        log.Fatal("Usage: tgram <path-to-telegram-cli> <path-to-server.pub>")
+        fmt.Fatal("Usage: tgram <path-to-telegram-cli> <path-to-server.pub>")
     }
     tg_cli_path := os.Args[1]
     tg_pub_path := os.Args[2]
