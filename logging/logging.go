@@ -17,45 +17,45 @@ with this program.  If not, see <http://www.gnu.org/licenses/>.
 package logging
 
 import (
-    "log"
-    "os"
+	"log"
+	"os"
 )
 
 const (
-    LevelError = iota
-    LevelInfo
-    LevelDebug
+	LevelError = iota
+	LevelInfo
+	LevelDebug
 )
 
 type simpleLogger struct {
-    nlevel int
-    logger *log.Logger
+	nlevel int
+	logger *log.Logger
 }
 
 func New(level int) *simpleLogger {
-    lg := new(simpleLogger)
-    lg.nlevel = level
-    lg.logger = log.New(os.Stdout, "", log.Ldate|log.Ltime|log.Lmicroseconds)
-    return lg
+	lg := new(simpleLogger)
+	lg.nlevel = level
+	lg.logger = log.New(os.Stdout, "", log.Ldate|log.Ltime|log.Lmicroseconds)
+	return lg
 }
 
 func (lg *simpleLogger) Error(format string, v ...interface{}) {
-    lg.logger.Printf("ERROR " + format, v...)
+	lg.logger.Printf("ERROR "+format, v...)
 }
 
 func (lg *simpleLogger) Fatal(format string, v ...interface{}) {
-    lg.logger.Printf("ERROR " + format, v...)
-    os.Exit(1)
+	lg.logger.Printf("ERROR "+format, v...)
+	os.Exit(1)
 }
 
 func (lg *simpleLogger) Info(format string, v ...interface{}) {
-    if lg.nlevel >= LevelInfo {
-        lg.logger.Printf("INFO  " + format, v...)
-    }
+	if lg.nlevel >= LevelInfo {
+		lg.logger.Printf("INFO  "+format, v...)
+	}
 }
 
 func (lg *simpleLogger) Debug(format string, v ...interface{}) {
-    if lg.nlevel >= LevelDebug {
-        lg.logger.Printf("DEBUG " + format, v...)
-    }
+	if lg.nlevel >= LevelDebug {
+		lg.logger.Printf("DEBUG "+format, v...)
+	}
 }
