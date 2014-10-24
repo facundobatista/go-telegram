@@ -17,8 +17,10 @@ with this program.  If not, see <http://www.gnu.org/licenses/>.
 package main
 
 import (
+	"./logging"
 	"./telegram"
 	"bufio"
+	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -32,15 +34,28 @@ func show_incoming(origin, message string) {
 
 func main() {
 	// check parameters
-	if len(os.Args) < 3 {
-		log.Fatal("Usage: tgram <path-to-telegram-cli> <path-to-server.pub>")
+	var verbose1 = flag.Bool("v", false, "Be verbose")
+	var verbose2 = flag.Bool("vv", false, "Be very verbose")
+	flag.Parse()
+	if len(flag.Args()) < 2 {
+		log.Fatal("Usage: tgram [{-v|-vv}] <path-to-telegram-cli> <path-to-server.pub>")
 	}
-	tg_cli_path := os.Args[1]
-	tg_pub_path := os.Args[2]
+	tg_cli_path := flag.Arg(0)
+	tg_pub_path := flag.Arg(1)
+
+	// convert verbose flags to log level
+	var loglevel int
+	if *verbose2 {
+		loglevel = logging.LevelDebug
+	} else if *verbose1 {
+		loglevel = logging.LevelInfo
+	} else {
+		loglevel = logging.LevelError
+	}
 
 	// start Telegram backend
 	fmt.Printf("Hello! Starting backend...\n")
-	telegram, err := telegram.New(tg_cli_path, tg_pub_path, show_incoming)
+	telegram, err := telegram.New(tg_cli_path, tg_pub_path, show_incoming, loglevel)
 	if err != nil {
 		log.Fatal(err)
 	}

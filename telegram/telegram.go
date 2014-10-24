@@ -41,9 +41,11 @@ type telegram struct {
 	command_mode             bool
 }
 
-func New(tg_cli_path string, tg_pub_path string, incoming_callback callback) (*telegram, error) {
+
+func New(tg_cli_path string, tg_pub_path string, incoming_callback callback, loglevel int) (*telegram, error) {
     t := new(telegram)
     t.incoming_callback = incoming_callback
+	logger.SetLevel(loglevel)
 
 	// start the command
 	cmd := exec.Command(tg_cli_path, "-C", "-k", tg_pub_path)

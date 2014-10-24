@@ -39,6 +39,10 @@ func New(level int) *simpleLogger {
 	return lg
 }
 
+func (lg *simpleLogger) SetLevel(level int) {
+	lg.nlevel = level
+}
+
 func (lg *simpleLogger) Error(format string, v ...interface{}) {
 	lg.logger.Printf("ERROR "+format, v...)
 }
